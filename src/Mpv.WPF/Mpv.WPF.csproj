@@ -55,6 +55,7 @@
     <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="EventArgs\PositionChangedEventArgs.cs" />
     <Compile Include="Guard.cs" />
     <Compile Include="KeepOpen\KeepOpen.cs" />
     <Compile Include="KeepOpen\KeepOpenHelper.cs" />

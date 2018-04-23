@@ -1,10 +1,12 @@
 ﻿using Mpv.NET;
 using System;
+using System.Globalization;
+using System.Windows.Controls;
+using System.Threading.Tasks;
+
 #if DEBUG
 using System.Diagnostics;
 #endif
-using System.Globalization;
-using System.Windows.Controls;
 
 namespace Mpv.WPF
 {
@@ -153,6 +155,9 @@ namespace Mpv.WPF
 			{
 				GuardAgainstNotLoaded();
 
+				if (value < TimeSpan.Zero || value > Duration)
+					throw new ArgumentOutOfRangeException("Desired position is out of range of the duration or less than zero.");
+
 				var totalSeconds = value.TotalSeconds;
 
 				var totalSecondsString = totalSeconds.ToString(CultureInfo.InvariantCulture);
@@ -185,7 +190,7 @@ namespace Mpv.WPF
 		}
 
 		/// <summary>
-		/// Volume of the current media file. Ranging from 0 to 100 inclusive.
+		/// Volume of the current media. Ranging from 0 to 100 inclusive.
 		/// </summary>
 		public int Volume
 		{
@@ -208,11 +213,35 @@ namespace Mpv.WPF
 			}
 		}
 
+		/// <summary>
+		/// Invoked when media is loaded.
+		/// </summary>
 		public event EventHandler MediaLoaded;
+
+		/// <summary>
+		/// Invoked when media is unloaded.
+		/// </summary>
 		public event EventHandler MediaUnloaded;
+		
+		/// <summary>
+		/// Invoked when an error occurs with the media. (E.g. failed to load)
+		/// </summary>
 		public event EventHandler MediaError;
+
+		/// <summary>
+		/// Invoked when started seeking.
+		/// </summary>
 		public event EventHandler MediaStartedSeeking;
+
+		/// <summary>
+		/// Invoked when seeking has ended and media is ready to be played.
+		/// </summary>
 		public event EventHandler MediaEndedSeeking;
+
+		/// <summary>
+		/// Invoked when the Position ("time-pos" in mpv) property is changed. Event arguments contain the new position.
+		/// </summary>
+		public event EventHandler<PositionChangedEventArgs> PositionChanged;
 
 		private NET.Mpv mpv;
 
@@ -222,6 +251,10 @@ namespace Mpv.WPF
 
 		private bool isYouTubeDlEnabled = false;
 		private bool isSeeking = false;
+
+		private TaskCompletionSource<object> seekCompletionSource;
+
+		private const int timePosUserData = 10;
 
 		private readonly object mpvLock = new object();
 
@@ -254,13 +287,42 @@ namespace Mpv.WPF
 			SetMpvHost();
 		}
 
+		private void InitialiseMpv(string libMpvPath)
+		{
+			mpv = new NET.Mpv(libMpvPath);
+
+			mpv.PlaybackRestart += MpvOnPlaybackRestart;
+			mpv.Seek += MpvOnSeek;
+
+			mpv.FileLoaded += MpvOnFileLoaded;
+			mpv.EndFile += MpvOnEndFile;
+
+			mpv.PropertyChange += MpvOnPropertyChange;
+
+			mpv.ObserveProperty("time-pos", MpvFormat.Int64, timePosUserData);
+
+#if DEBUG
+			mpv.LogMessage += MpvOnLogMessage;
+
+			mpv.RequestLogMessages(MpvLogLevel.Info);
+#endif
+		}
+
+		private void SetMpvHost()
+		{
+			// Create the HwndHost and add it to the user control.
+			playerHwndHost = new MpvPlayerHwndHost(mpv);
+			AddChild(playerHwndHost);
+		}
+
 		/// <summary>
-		/// Loads the file at the path into mpv.
+		/// Loads the file at the path into mpv. If called while media is playing, the specified media
+		/// will be appended to the playlist.
 		/// If youtube-dl is enabled, this method can be used to load videos from video sites.
 		/// </summary>
-		/// <param name="path">Path or URL to a media file.</param>
-		/// <param name="loadMethod">The way in which the given media file should be loaded.</param>
-		public void Load(string path, LoadMethod loadMethod = LoadMethod.AppendPlay)
+		/// <param name="path">Path or URL to media source.</param>
+		/// <param name="force">If true, will force load the media replacing any currently playing media.</param>
+		public void Load(string path, bool force = false)
 		{
 			Guard.AgainstNullOrEmptyOrWhiteSpaceString(path, nameof(path));
 
@@ -268,9 +330,31 @@ namespace Mpv.WPF
 			{
 				mpv.SetPropertyString("pause", AutoPlay ? "no" : "yes");
 
+				var loadMethod = LoadMethod.Replace;
+
+				// If there is media already playing, we append
+				// the desired video onto the playlist.
+				// (Unless force is true.)
+				if (IsPlaying && !force)
+					loadMethod = LoadMethod.Append;
+
 				var loadMethodString = LoadMethodHelper.ToString(loadMethod);
 				mpv.Command("loadfile", path, loadMethodString);
 			}
+		}
+
+		/// <summary>
+		/// Seek to the specified position.
+		/// </summary>
+		/// <param name="newPosition">The new position.</param>
+		/// <returns>Task that will complete when seeking is finished.</returns>
+		public Task SeekAsync(TimeSpan newPosition)
+		{
+			seekCompletionSource = new TaskCompletionSource<object>();
+
+			Position = newPosition;
+
+			return seekCompletionSource.Task;
 		}
 
 		/// <summary>
@@ -420,6 +504,7 @@ namespace Mpv.WPF
 		{
 			var oldIndexString = oldIndex.ToString();
 			var newIndexString = newIndex.ToString();
+
 			try
 			{
 				lock (mpvLock)
@@ -465,34 +550,12 @@ namespace Mpv.WPF
 			isYouTubeDlEnabled = true;
 		}
 
-		private void InitialiseMpv(string libMpvPath)
-		{
-			mpv = new NET.Mpv(libMpvPath);
-
-			mpv.PlaybackRestart += MpvOnPlaybackRestart;
-			mpv.Seek += MpvOnSeek;
-
-			mpv.FileLoaded += MpvOnFileLoaded;
-			mpv.EndFile += MpvOnEndFile;
-
-#if DEBUG
-			mpv.LogMessage += MpvOnLogMessage;
-
-			mpv.RequestLogMessages(MpvLogLevel.Info);
-#endif
-		}
-
-		private void SetMpvHost()
-		{
-			// Create the HwndHost and add it to the user control.
-			playerHwndHost = new MpvPlayerHwndHost(mpv);
-			AddChild(playerHwndHost);
-		}
-
 		private void MpvOnPlaybackRestart(object sender, EventArgs e)
 		{
 			if (isSeeking)
 			{
+				seekCompletionSource.SetResult(null);
+
 				MediaEndedSeeking?.Invoke(this, EventArgs.Empty);
 				isSeeking = false;
 			}
@@ -545,6 +608,26 @@ namespace Mpv.WPF
 			Debug.Write($"[{prefix}] {text}");
 		}
 #endif
+
+		private void MpvOnPropertyChange(object sender, MpvPropertyChangeEventArgs e)
+		{
+			var eventProperty = e.EventProperty;
+
+			switch (e.ReplyUserData)
+			{
+				case timePosUserData:
+					var newPosition = (int)eventProperty.DataLong;
+
+					InvokePositionChanged(newPosition);
+					break;
+			}
+		}
+
+		private void InvokePositionChanged(int newPosition)
+		{
+			var eventArgs = new PositionChangedEventArgs(newPosition);
+			PositionChanged?.Invoke(this, eventArgs);
+		}
 
 		private void GuardAgainstNotLoaded()
 		{

@@ -20,7 +20,6 @@
 using Mpv.WPF.Example.ViewModels;
 using System;
 using System.Windows;
-using System.Windows.Threading;
 
 namespace Mpv.WPF.Example
 {
@@ -29,8 +28,6 @@ namespace Mpv.WPF.Example
 		private readonly MainWindowModel model = new MainWindowModel();
 
 		private MpvPlayer player;
-
-		private DispatcherTimer positionUpdateTimer;
 
 		private bool isMovingPositionSlider = false;
 
@@ -44,17 +41,6 @@ namespace Mpv.WPF.Example
 			DataContext = model;
 
 			SetupPlayer();
-
-			SetupPositionUpdateTimer();
-		}
-
-		private void SetupPositionUpdateTimer()
-		{
-			positionUpdateTimer = new DispatcherTimer
-			{
-				Interval = TimeSpan.FromMilliseconds(500)
-			};
-			positionUpdateTimer.Tick += PositionUpdateTimerOnTick;
 		}
 
 		private void SetupPlayer()
@@ -64,16 +50,17 @@ namespace Mpv.WPF.Example
 				AutoPlay = true
 			};
 
+			playerHost.Children.Add(player);
+
 			player.MediaLoaded += PlayerOnMediaLoaded;
 			player.MediaUnloaded += PlayerOnMediaUnloaded;
+			player.PositionChanged += PlayerOnPositionChanged;
 
 			player.EnableYouTubeDl(@"scripts\ytdl_hook.lua");
 			player.YouTubeDlVideoQuality = YouTubeDlVideoQuality.MediumHigh;
 
 			player.Load(@"https://www.youtube.com/watch?v=E5ln4uR4TwQ");
 			player.Load(@"https://www.youtube.com/watch?v=SNoK5pyK73c");
-
-			playerHost.Children.Add(player);
 		}
 
 		private void PlayerOnMediaLoaded(object sender, EventArgs e)
@@ -81,8 +68,6 @@ namespace Mpv.WPF.Example
 			model.IsMediaLoaded = true;
 
 			model.Duration = player.Duration;
-
-			positionUpdateTimer.Start();
 		}
 
 		private void PlayerOnMediaUnloaded(object sender, EventArgs e)
@@ -125,10 +110,15 @@ namespace Mpv.WPF.Example
 			}
 		}
 
-		private void PositionUpdateTimerOnTick(object sender, EventArgs e)
+		private void PlayerOnPositionChanged(object sender, PositionChangedEventArgs e)
 		{
 			if (!isMovingPositionSlider && model.IsMediaLoaded)
-				positionSlider.Value = player.Position.TotalSeconds;
+			{
+				Dispatcher.Invoke(() =>
+				{
+					positionSlider.Value = e.Position;
+				});
+			}
 		}
 
 		private void PositionSliderOnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
