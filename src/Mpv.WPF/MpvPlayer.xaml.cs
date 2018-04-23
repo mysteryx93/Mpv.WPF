@@ -2,6 +2,7 @@
 using System;
 using System.Globalization;
 using System.Windows.Controls;
+using System.Threading.Tasks;
 
 #if DEBUG
 using System.Diagnostics;
@@ -154,6 +155,9 @@ namespace Mpv.WPF
 			{
 				GuardAgainstNotLoaded();
 
+				if (value < TimeSpan.Zero || value > Duration)
+					throw new ArgumentOutOfRangeException("Desired position is out of range of the duration or less than zero.");
+
 				var totalSeconds = value.TotalSeconds;
 
 				var totalSecondsString = totalSeconds.ToString(CultureInfo.InvariantCulture);
@@ -248,6 +252,8 @@ namespace Mpv.WPF
 		private bool isYouTubeDlEnabled = false;
 		private bool isSeeking = false;
 
+		private TaskCompletionSource<object> seekCompletionSource;
+
 		private const int timePosUserData = 10;
 
 		private readonly object mpvLock = new object();
@@ -330,11 +336,25 @@ namespace Mpv.WPF
 				// the desired video onto the playlist.
 				// (Unless force is true.)
 				if (IsPlaying && !force)
-					loadMethod = LoadMethod.AppendPlay;
+					loadMethod = LoadMethod.Append;
 
 				var loadMethodString = LoadMethodHelper.ToString(loadMethod);
 				mpv.Command("loadfile", path, loadMethodString);
 			}
+		}
+
+		/// <summary>
+		/// Seek to the specified position.
+		/// </summary>
+		/// <param name="newPosition">The new position.</param>
+		/// <returns>Task that will complete when seeking is finished.</returns>
+		public Task SeekAsync(TimeSpan newPosition)
+		{
+			seekCompletionSource = new TaskCompletionSource<object>();
+
+			Position = newPosition;
+
+			return seekCompletionSource.Task;
 		}
 
 		/// <summary>
@@ -534,6 +554,8 @@ namespace Mpv.WPF
 		{
 			if (isSeeking)
 			{
+				seekCompletionSource.SetResult(null);
+
 				MediaEndedSeeking?.Invoke(this, EventArgs.Empty);
 				isSeeking = false;
 			}
