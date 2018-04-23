@@ -13,7 +13,7 @@
 		Append,
 
 		/// <summary>
-		/// Append media to playlist and play if nothing is playing start playback.
+		/// Append media to playlist and play if nothing else is playing.
 		/// </summary>
 		AppendPlay
 	}

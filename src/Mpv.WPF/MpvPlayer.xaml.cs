@@ -302,19 +302,35 @@ namespace Mpv.WPF
 #endif
 		}
 
+		private void SetMpvHost()
+		{
+			// Create the HwndHost and add it to the user control.
+			playerHwndHost = new MpvPlayerHwndHost(mpv);
+			AddChild(playerHwndHost);
+		}
+
 		/// <summary>
-		/// Loads the file at the path into mpv.
+		/// Loads the file at the path into mpv. If called while media is playing, the specified media
+		/// will be appended to the playlist.
 		/// If youtube-dl is enabled, this method can be used to load videos from video sites.
 		/// </summary>
-		/// <param name="path">Path or URL to a media file.</param>
-		/// <param name="loadMethod">The way in which the given media file should be loaded.</param>
-		public void Load(string path, LoadMethod loadMethod = LoadMethod.AppendPlay)
+		/// <param name="path">Path or URL to media source.</param>
+		/// <param name="force">If true, will force load the media replacing any currently playing media.</param>
+		public void Load(string path, bool force = false)
 		{
 			Guard.AgainstNullOrEmptyOrWhiteSpaceString(path, nameof(path));
 
 			lock (mpvLock)
 			{
 				mpv.SetPropertyString("pause", AutoPlay ? "no" : "yes");
+
+				var loadMethod = LoadMethod.Replace;
+
+				// If there is media already playing, we append
+				// the desired video onto the playlist.
+				// (Unless force is true.)
+				if (IsPlaying && !force)
+					loadMethod = LoadMethod.AppendPlay;
 
 				var loadMethodString = LoadMethodHelper.ToString(loadMethod);
 				mpv.Command("loadfile", path, loadMethodString);
@@ -512,13 +528,6 @@ namespace Mpv.WPF
 			}
 
 			isYouTubeDlEnabled = true;
-		}
-
-		private void SetMpvHost()
-		{
-			// Create the HwndHost and add it to the user control.
-			playerHwndHost = new MpvPlayerHwndHost(mpv);
-			AddChild(playerHwndHost);
 		}
 
 		private void MpvOnPlaybackRestart(object sender, EventArgs e)

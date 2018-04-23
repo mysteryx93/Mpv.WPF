@@ -50,6 +50,8 @@ namespace Mpv.WPF.Example
 				AutoPlay = true
 			};
 
+			playerHost.Children.Add(player);
+
 			player.MediaLoaded += PlayerOnMediaLoaded;
 			player.MediaUnloaded += PlayerOnMediaUnloaded;
 			player.PositionChanged += PlayerOnPositionChanged;
@@ -59,8 +61,6 @@ namespace Mpv.WPF.Example
 
 			player.Load(@"https://www.youtube.com/watch?v=E5ln4uR4TwQ");
 			player.Load(@"https://www.youtube.com/watch?v=SNoK5pyK73c");
-
-			playerHost.Children.Add(player);
 		}
 
 		private void PlayerOnMediaLoaded(object sender, EventArgs e)
@@ -116,7 +116,7 @@ namespace Mpv.WPF.Example
 			{
 				Dispatcher.Invoke(() =>
 				{
-					positionSlider.Value = player.Position.TotalSeconds;
+					positionSlider.Value = e.Position;
 				});
 			}
 		}
