@@ -1,10 +1,11 @@
 ﻿using Mpv.NET;
 using System;
+using System.Globalization;
+using System.Windows.Controls;
+
 #if DEBUG
 using System.Diagnostics;
 #endif
-using System.Globalization;
-using System.Windows.Controls;
 
 namespace Mpv.WPF
 {
@@ -185,7 +186,7 @@ namespace Mpv.WPF
 		}
 
 		/// <summary>
-		/// Volume of the current media file. Ranging from 0 to 100 inclusive.
+		/// Volume of the current media. Ranging from 0 to 100 inclusive.
 		/// </summary>
 		public int Volume
 		{
@@ -208,11 +209,35 @@ namespace Mpv.WPF
 			}
 		}
 
+		/// <summary>
+		/// Invoked when media is loaded.
+		/// </summary>
 		public event EventHandler MediaLoaded;
+
+		/// <summary>
+		/// Invoked when media is unloaded.
+		/// </summary>
 		public event EventHandler MediaUnloaded;
+		
+		/// <summary>
+		/// Invoked when an error occurs with the media. (E.g. failed to load)
+		/// </summary>
 		public event EventHandler MediaError;
+
+		/// <summary>
+		/// Invoked when started seeking.
+		/// </summary>
 		public event EventHandler MediaStartedSeeking;
+
+		/// <summary>
+		/// Invoked when seeking has ended and media is ready to be played.
+		/// </summary>
 		public event EventHandler MediaEndedSeeking;
+
+		/// <summary>
+		/// Invoked when the Position ("time-pos" in mpv) property is changed. Event arguments contain the new position.
+		/// </summary>
+		public event EventHandler<PositionChangedEventArgs> PositionChanged;
 
 		private NET.Mpv mpv;
 
@@ -222,6 +247,8 @@ namespace Mpv.WPF
 
 		private bool isYouTubeDlEnabled = false;
 		private bool isSeeking = false;
+
+		private const int timePosUserData = 10;
 
 		private readonly object mpvLock = new object();
 
@@ -252,6 +279,27 @@ namespace Mpv.WPF
 
 			// Set the host of the mpv player.
 			SetMpvHost();
+		}
+
+		private void InitialiseMpv(string libMpvPath)
+		{
+			mpv = new NET.Mpv(libMpvPath);
+
+			mpv.PlaybackRestart += MpvOnPlaybackRestart;
+			mpv.Seek += MpvOnSeek;
+
+			mpv.FileLoaded += MpvOnFileLoaded;
+			mpv.EndFile += MpvOnEndFile;
+
+			mpv.PropertyChange += MpvOnPropertyChange;
+
+			mpv.ObserveProperty("time-pos", MpvFormat.Int64, timePosUserData);
+
+#if DEBUG
+			mpv.LogMessage += MpvOnLogMessage;
+
+			mpv.RequestLogMessages(MpvLogLevel.Info);
+#endif
 		}
 
 		/// <summary>
@@ -420,6 +468,7 @@ namespace Mpv.WPF
 		{
 			var oldIndexString = oldIndex.ToString();
 			var newIndexString = newIndex.ToString();
+
 			try
 			{
 				lock (mpvLock)
@@ -463,23 +512,6 @@ namespace Mpv.WPF
 			}
 
 			isYouTubeDlEnabled = true;
-		}
-
-		private void InitialiseMpv(string libMpvPath)
-		{
-			mpv = new NET.Mpv(libMpvPath);
-
-			mpv.PlaybackRestart += MpvOnPlaybackRestart;
-			mpv.Seek += MpvOnSeek;
-
-			mpv.FileLoaded += MpvOnFileLoaded;
-			mpv.EndFile += MpvOnEndFile;
-
-#if DEBUG
-			mpv.LogMessage += MpvOnLogMessage;
-
-			mpv.RequestLogMessages(MpvLogLevel.Info);
-#endif
 		}
 
 		private void SetMpvHost()
@@ -545,6 +577,26 @@ namespace Mpv.WPF
 			Debug.Write($"[{prefix}] {text}");
 		}
 #endif
+
+		private void MpvOnPropertyChange(object sender, MpvPropertyChangeEventArgs e)
+		{
+			var eventProperty = e.EventProperty;
+
+			switch (e.ReplyUserData)
+			{
+				case timePosUserData:
+					var newPosition = (int)eventProperty.DataLong;
+
+					InvokePositionChanged(newPosition);
+					break;
+			}
+		}
+
+		private void InvokePositionChanged(int newPosition)
+		{
+			var eventArgs = new PositionChangedEventArgs(newPosition);
+			PositionChanged?.Invoke(this, eventArgs);
+		}
 
 		private void GuardAgainstNotLoaded()
 		{
