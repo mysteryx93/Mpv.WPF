@@ -554,7 +554,7 @@ namespace Mpv.WPF
 		{
 			if (isSeeking)
 			{
-				seekCompletionSource.SetResult(null);
+				seekCompletionSource?.SetResult(null);
 
 				MediaEndedSeeking?.Invoke(this, EventArgs.Empty);
 				isSeeking = false;
