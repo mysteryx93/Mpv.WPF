@@ -9,7 +9,8 @@ WPF user control to easily play video. Powered by [mpv](https://github.com/mpv-p
 
 * Simple setup
 * Auto play
-* Playlist - Load, Next, Previous Move, Remove, Shuffle or Clear
+* Asynchronous seeking
+* Playlist - Load, Next, Previous, Move, Remove, Shuffle or Clear
 * Optional youtube-dl support to play videos from hundreds of video sites.
 	* Change the desired video quality.
 
@@ -81,10 +82,9 @@ To enable youtube-dl follow these steps:
     ```
 10. Done!
 
-## Related Projects
+## Related Project
 
 * [Mpv.NET](https://github.com/hudec117/Mpv.NET) - A .NET wrapper for the mpv C API.
-* Mpv.WinForms - Upcoming user control library for Windows Forms.
 
 ## Licensing
 
