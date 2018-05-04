@@ -26,6 +26,11 @@ namespace Mpv.WPF
 		public string LibMpvPath { get; private set; }
 
 		/// <summary>
+		/// Title of the loaded media. If the title is not available, this falls back to the path.
+		/// </summary>
+		public string MediaTitle { get; private set; }
+
+		/// <summary>
 		/// The desired video quality to retrieve when loading streams from video sites.
 		/// </summary>
 		public YouTubeDlVideoQuality YouTubeDlVideoQuality
@@ -572,6 +577,8 @@ namespace Mpv.WPF
 			IsMediaLoaded = true;
 
 			IsPlaying = AutoPlay;
+
+			MediaTitle = mpv.GetPropertyString("media-title");
 
 			MediaLoaded?.Invoke(this, EventArgs.Empty);
 		}
