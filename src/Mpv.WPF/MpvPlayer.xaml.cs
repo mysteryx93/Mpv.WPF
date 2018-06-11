@@ -1,7 +1,7 @@
 ﻿using Mpv.NET;
 using System;
+using System.IO;
 using System.Globalization;
-using System.Windows.Controls;
 using System.Threading.Tasks;
 
 #if DEBUG
@@ -13,7 +13,7 @@ namespace Mpv.WPF
 	/// <summary>
 	/// User control containing an mpv player.
 	/// </summary>
-	public partial class MpvPlayer : UserControl
+	public partial class MpvPlayer : IDisposable
 	{
 		/// <summary>
 		/// An instance of the underlying mpv API. Do not touch unless you know what you're doing.
@@ -227,7 +227,7 @@ namespace Mpv.WPF
 		/// Invoked when media is unloaded.
 		/// </summary>
 		public event EventHandler MediaUnloaded;
-		
+
 		/// <summary>
 		/// Invoked when an error occurs with the media. (E.g. failed to load)
 		/// </summary>
@@ -250,7 +250,7 @@ namespace Mpv.WPF
 
 		private NET.Mpv mpv;
 
-		private MpvPlayerHwndHost playerHwndHost;
+		private IntPtr hwnd;
 
 		private YouTubeDlVideoQuality ytdlVideoQuality;
 
@@ -266,30 +266,48 @@ namespace Mpv.WPF
 		/// <summary>
 		/// Creates an instance of MpvPlayer using a specific libmpv DLL.
 		/// </summary>
+		/// <param name="hwnd">The windows handle that will host Mpv, such as one created with a WindowsFormsHost in WPF.</param>
 		/// <param name="libMpvPath">Relative or absolute path to the libmpv DLL.</param>
-		public MpvPlayer(string libMpvPath)
+		public MpvPlayer(IntPtr hwnd, string libMpvPath)
 		{
-			InitializeComponent();
-
-			LibMpvPath = libMpvPath;
+			this.LibMpvPath = libMpvPath;
+			this.hwnd = hwnd;
 
 			Initialise();
 		}
 
+		/// <summary>
+		/// Creates an instance of MpvPlayer using a specific libmpv DLL.
+		/// </summary>
+		/// <param name="hwnd">The windows handle that will host Mpv, such as one created with a WindowsFormsHost in WPF.</param>
+		public MpvPlayer(IntPtr hwnd)
+		{
+			this.hwnd = hwnd;
+
+			Initialise();
+		}
+
+		public void Dispose()
+		{
+			mpv.Dispose();
+		}
+
 		private void Initialise()
 		{
-			// Watch out for shutdown to dispose the API.
-			Dispatcher.ShutdownStarted += DispatcherOnShutdownStarted;
-
 			// Initialise the API.
-			InitialiseMpv(LibMpvPath);
+			if (!string.IsNullOrEmpty(LibMpvPath))
+				InitialiseMpv(LibMpvPath);
+			else if (File.Exists("mpv-1.dll"))
+				InitialiseMpv("mpv-1.dll");
+			else if (File.Exists("lib\\mpv-1.dll"))
+				InitialiseMpv("lib\\mpv-1.dll");
 
 			// Set defaults.
 			Volume = 50;
 			YouTubeDlVideoQuality = YouTubeDlVideoQuality.Highest;
 
 			// Set the host of the mpv player.
-			SetMpvHost();
+			SetMpvHost(hwnd);
 		}
 
 		private void InitialiseMpv(string libMpvPath)
@@ -313,11 +331,15 @@ namespace Mpv.WPF
 #endif
 		}
 
-		private void SetMpvHost()
+		private void SetMpvHost(IntPtr hwnd)
 		{
+			var playerHostPtrLong = hwnd.ToInt64();
+			mpv.SetPropertyLong("wid", playerHostPtrLong);
+
 			// Create the HwndHost and add it to the user control.
-			playerHwndHost = new MpvPlayerHwndHost(mpv);
-			AddChild(playerHwndHost);
+			//playerHwndHost = new MpvPlayerHwndHost(mpv);
+			//AddChild(playerHwndHost);
+
 		}
 
 		/// <summary>
@@ -648,12 +670,6 @@ namespace Mpv.WPF
 				return false;
 			else
 				throw exception;
-		}
-
-		private void DispatcherOnShutdownStarted(object sender, EventArgs e)
-		{
-			mpv.Dispose();
-			playerHwndHost.Dispose();
 		}
 	}
 }
